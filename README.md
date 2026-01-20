@@ -1,9 +1,7 @@
 # Windows-Admin-Center-Functions-Overview
 
 ## License Disclaimer (Microsoft WAC Scripts)
-```
-The Windows Admin Center PowerShell scripts included in the extracted modules are Microsoft-provided content. Per the WAC UI notice: "We grant you a non-exclusive, royalty-free right to use, modify, reproduce, and distribute the scripts provided herein. ANY SCRIPTS PROVIDED BY MICROSOFT ARE PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS OR A PARTICULAR PURPOSE."
-```
+> The Windows Admin Center PowerShell scripts included in the extracted modules are Microsoft-provided content. Per the WAC UI notice: "We grant you a non-exclusive, royalty-free right to use, modify, reproduce, and distribute the scripts provided herein. ANY SCRIPTS PROVIDED BY MICROSOFT ARE PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS OR A PARTICULAR PURPOSE."
 
 ## Scope and Licensing
 - This repository contains two kinds of content:
@@ -11,9 +9,7 @@ The Windows Admin Center PowerShell scripts included in the extracted modules ar
   - Extracted Windows Admin Center module content under `wac-modules-for-site/`: this remains Microsoft content and is subject to Microsoft/WAC license terms (see the notice above).
 
 ## AI Notice
-```
-The site UI, structure, and code in this repository were generated with AI assistance.
-```
+> The site UI, structure, and code in this repository were generated with AI assistance.
 
 ## Overview
 An overview site for the PowerShell functions found within, and used by WAC (Windows Admin Center).
