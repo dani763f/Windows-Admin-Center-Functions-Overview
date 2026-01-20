@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-SITE_MODULES = ROOT / "_wac-modules-for-site"
+SITE_MODULES = ROOT / "wac-modules-for-site"
 OUT_PATH = ROOT / "data.json"
 
 
