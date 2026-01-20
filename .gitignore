@@ -1,0 +1,6 @@
+# Local generators and caches
+__pycache__/
+*.pyc
+
+# Local server artifacts
+*.log

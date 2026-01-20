@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Windows Admin Center PowerShell Functions</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="assets/hljs-solarized-dark.min.css" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="card sidebar">
+        <header>
+          <h1>Windows Admin Center PowerShell Functions</h1>
+          <p class="sub">Search and browse exported functions from the modules snapshot.</p>
+        </header>
+        <div class="controls">
+          <div class="row">
+            <input id="q" type="search" placeholder="Search functions or descriptions..." autocomplete="off" />
+            <button class="btn" id="clear" title="Clear search">Clear</button>
+          </div>
+          <div class="stats">
+            <div class="pill"><span id="modsCount">0</span> modules</div>
+            <div class="pill"><span id="funcsCount">0</span> functions</div>
+            <div class="pill"><span id="shownCount">0</span> shown</div>
+          </div>
+        </div>
+        <nav id="nav"></nav>
+      </aside>
+
+      <section class="card">
+        <div class="breadcrumb">
+          <div class="breadcrumb-title">Browsing: <span id="breadcrumbText">All Modules</span></div>
+        </div>
+        <main id="main"></main>
+      </section>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <button id="jumpTop" class="btn jump-top" type="button" title="Jump to top">Top</button>
+
+    <script src="assets/hljs-core.min.js"></script>
+    <script src="assets/hljs-powershell.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

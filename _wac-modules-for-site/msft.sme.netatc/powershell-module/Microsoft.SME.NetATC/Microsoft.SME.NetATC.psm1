@@ -1,0 +1,696 @@
+function Get-WACNAClusterNodes {
+<#
+
+.SYNOPSIS
+Gets the cluster's nodes' names
+
+.DESCRIPTION
+Gets the cluster's nodes' names
+
+.ROLE
+Readers
+    
+#>
+Set-StrictMode -Version 5.0
+
+(Get-ClusterNode).Name
+
+}
+## [END] Get-WACNAClusterNodes ##
+function Get-WACNAClusterSites {
+<#
+
+.SYNOPSIS
+Gets the cluster's site names
+
+.DESCRIPTION
+Gets the cluster's site names
+
+.ROLE
+Readers
+    
+#>
+Set-StrictMode -Version 5.0
+
+# Get-ClusterFaultDomain -Type Site # does not work!
+(Get-WmiObject -Class MSCluster_FaultDomain -Namespace Root\MSCluster | Where-Object {$_.Type -eq 1000}).Name
+
+}
+## [END] Get-WACNAClusterSites ##
+function Get-WACNANetAdapterProperties {
+<#
+
+.SYNOPSIS
+Gets the specified properties of physical ethernet net adapters
+
+.DESCRIPTION
+Gets the specified properties of physical ethernet net adapters (ie not virtual or wi-fi or usb)
+
+.PARAMETER properties
+The properties to query
+
+.ROLE
+Readers
+    
+#>
+param
+(
+  [Parameter(Mandatory = $true)]
+  [ValidateNotNullorEmpty()]
+  [String[]] $properties
+)
+
+Set-StrictMode -Version 5.0
+
+Get-NetAdapter | Where-Object {($_.MediaType -eq '802.3') -and ($_.Status -eq 'Up') -and ($_.ConnectorPresent -eq $true)} | Select-Object -Property $properties
+
+}
+## [END] Get-WACNANetAdapterProperties ##
+function Get-WACNANetIntentGlobalOverrides {
+<#
+
+.SYNOPSIS
+Gets the net intent global overrides
+
+.DESCRIPTION
+Gets the net intent global overrides of the cluster
+
+.ROLE
+Readers
+    
+#>
+Set-StrictMode -Version 5.0
+Import-Module NetworkATC
+
+Get-NetIntent -GlobalOverrides | ConvertTo-Json | ConvertFrom-Json
+
+}
+## [END] Get-WACNANetIntentGlobalOverrides ##
+function Get-WACNANetIntents {
+<#
+
+.SYNOPSIS
+Gets the net intents
+
+.DESCRIPTION
+Gets the net intents of the cluster
+
+.ROLE
+Readers
+    
+#>
+Set-StrictMode -Version 5.0
+Import-Module NetworkATC
+
+Get-NetIntent | ConvertTo-Json -Depth 4 | ConvertFrom-Json # depth must be minimum 4 to get site override VLANs as arrays
+
+}
+## [END] Get-WACNANetIntents ##
+function Get-WACNANetIntentsStatuses {
+<#
+
+.SYNOPSIS
+Gets the net intents' statuses
+
+.DESCRIPTION
+Gets the net intents' statuses of the cluster and adds missing statuses
+
+.ROLE
+Readers
+    
+#>
+Set-StrictMode -Version 5.0
+Import-Module NetworkATC
+
+$nodes = Get-ClusterNode
+$intents = Get-NetIntent
+$statuses = Get-NetIntentStatus
+$missingStatuses = @()
+$defaultStatus = New-Object PsObject -Property @{
+    IntentName            = " - "
+    Host                  = " - "
+    IsComputeIntentSet    = " - "
+    IsManagementIntentSet = " - "
+    IsStorageIntentSet    = " - "
+    IsStretchIntentSet    = " - "
+    LastUpdated           = " - "
+    LastSuccess           = " - "
+    RetryCount            = 0
+    LastConfigApplied     = 0
+    Error                 = " - "
+    Progress              = " - "
+    ConfigurationStatus   = " - "
+    ProvisioningStatus    = " - "
+}
+
+if ($null -ne $intents) {
+    if ($intents -isnot [array]) {
+        $intents = @($intents)
+    }
+    if ($nodes -isnot [array]) {
+        $nodes = @($nodes)
+    }
+    if ($null -eq $statuses) {
+        foreach ($intent in $intents) {
+            foreach ($node in $nodes) {
+                $status = $defaultStatus.PsObject.Copy()
+                $status.IntentName = $intent.IntentName
+                $status.Host = $node.Name
+                $missingStatuses += $status
+            }
+        }
+    }
+    else {
+        if ($statuses -isnot [array]) {
+            $statuses = @($statuses)
+        }
+        if ($nodes.Count * $intents.Count -ne $statuses.Count) {
+            foreach ($intent in $intents) {
+                $intentStatuses = $statuses | Where-Object { $_.intentName -eq $intent.IntentName }
+                if ($intentStatuses -isnot [array]) {
+                    $intentStatuses = @($intentStatuses)
+                }
+                if ($intentStatuses.Count -ne $nodes.Count) {
+                    $missingNodeNames = (Compare-Object -ReferenceObject $intentStatuses.Host -DifferenceObject $nodes.Name).InputObject
+                    foreach ($nodeName in $missingNodeNames) {
+                        $status = $defaultStatus.PsObject.Copy()
+                        $status.IntentName = $intent.IntentName
+                        $status.Host = $nodeName
+                        $missingStatuses += $status
+                    }
+                }
+            }
+        } 
+    }
+    $statuses + $missingStatuses
+}
+
+}
+## [END] Get-WACNANetIntentsStatuses ##
+function Get-WACNANetworkDirectTechnology {
+<#
+
+.SYNOPSIS
+Gets the network direct technology valid registry values of the net adapters
+
+.DESCRIPTION
+Gets the network direct technology valid registry values of the net adapters
+
+.ROLE
+Readers
+    
+#>
+Set-StrictMode -Version 5.0
+
+Get-NetAdapterAdvancedProperty -RegistryKeyword *NetworkDirectTechnology | Select-Object name, ValidRegistryValues
+
+}
+## [END] Get-WACNANetworkDirectTechnology ##
+function Get-WACNAWindowsFeaturesInstalled {
+<#
+
+.SYNOPSIS
+Gets whether the Windows features provided are installed
+
+.DESCRIPTION
+Gets whether the Windows features provided are installed
+
+.PARAMETER features
+The windows features to query
+
+.ROLE
+Readers
+    
+#>
+param
+(
+  [Parameter(Mandatory = $true)]
+  [ValidateNotNullorEmpty()]
+  [String[]] $features
+)
+
+Set-StrictMode -Version 5.0
+
+$installed = (Get-WindowsFeature -Name $features).Installed
+$installed.Count -eq $features.Count -and $installed -notcontains $false
+
+}
+## [END] Get-WACNAWindowsFeaturesInstalled ##
+function Install-WACNAWindowsFeatures {
+<#
+
+.SYNOPSIS
+Installs the Windows features provided
+
+.DESCRIPTION
+Installs the Windows features provided and returns the feature result
+
+.PARAMETER features
+The windows features to install
+
+.ROLE
+Readers
+    
+#>
+param
+(
+  [Parameter(Mandatory = $true)]
+  [ValidateNotNullorEmpty()]
+  [String[]] $features
+)
+
+Set-StrictMode -Version 5.0
+
+Install-WindowsFeature -Name $features -IncludeManagementTools
+
+}
+## [END] Install-WACNAWindowsFeatures ##
+function Remove-WACNANetIntents {
+<#
+
+.SYNOPSIS
+Removes the net intents provided
+
+.DESCRIPTION
+Removes the net intents provided
+
+.PARAMETER names
+The names of the net intents to remove
+
+.ROLE
+Readers
+    
+#>
+param
+(
+  [Parameter(Mandatory = $true)]
+  [ValidateNotNullorEmpty()]
+  [String[]] $names
+)
+
+Set-StrictMode -Version 5.0
+Import-Module NetworkATC
+
+$err = @()
+
+for ($i = 0; $i -lt $names.Count; ++$i) {
+  Remove-NetIntent -Name $($names[$i]) -ErrorAction SilentlyContinue -ErrorVariable +err
+}
+
+for ($i = 0; $i -lt $err.Count; ++$i) {
+  Write-Error $err[$i].Exception
+}
+
+}
+## [END] Remove-WACNANetIntents ##
+function Update-WACNAClusterOverrides {
+<#
+
+.SYNOPSIS
+Updates the net intent global cluster override
+
+.DESCRIPTION
+Updates the net intent global cluster override
+
+.PARAMETER create
+Whether the net intent global override needs to be created
+
+.PARAMETER override
+The cluster override to set
+
+.ROLE
+Readers
+    
+#>
+param
+(
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullorEmpty()]
+    [boolean] $create,
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullorEmpty()]
+    [object] $override
+)
+
+Set-StrictMode -Version 5.0
+Import-Module NetworkATC
+
+if ($create) {
+    try {
+        Add-NetIntent -GlobalClusterOverrides $override -ErrorVariable +err
+    } catch {
+        # do nothing, write error later
+    }
+} else {
+    Set-NetIntent -GlobalClusterOverrides $override -ErrorAction SilentlyContinue -ErrorVariable +err
+}
+
+for ($i = 0; $i -lt $err.Count; ++$i) {
+    Write-Error $err[$i].Exception
+}
+
+}
+## [END] Update-WACNAClusterOverrides ##
+function Update-WACNANetIntents {
+<#
+
+.SYNOPSIS
+Adds or sets the net intent provided
+
+.DESCRIPTION
+Adds or sets the net intent provided
+
+.PARAMETER create
+Whether the intent needs to be created
+
+.PARAMETER intent
+The intent to add or set
+
+.ROLE
+Readers
+    
+#>
+param
+(
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullorEmpty()]
+    [boolean] $create,
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullorEmpty()]
+    [object] $intent
+)
+
+Set-StrictMode -Version 5.0
+Import-Module NetworkATC
+
+$err = @()
+
+$switchOverrides = New-NetIntentSwitchConfigurationOverrides
+if ([bool]($intent.PSobject.Properties.name -match "switchConfigOverride")) {
+    $switchOverrides = $intent.switchConfigOverride
+}
+$DCBOverride1 = New-NetIntentQoSPolicyOverrides 
+if ([bool]($intent.PSobject.Properties.name -match "qosPolicyOverride")) {
+    $DCBOverride1 = $intent.qosPolicyOverride
+}
+$AdapterPropertyOverride = New-NetIntentAdapterPropertyOverrides
+if ([bool]($intent.PSobject.Properties.name -match "adapterAdvancedParametersOverride")) {
+    $AdapterPropertyOverride = $intent.adapterAdvancedParametersOverride
+}
+
+$siteOverrides = $null
+if ([bool]($intent.PSobject.Properties.name -match "siteOverrides")) {
+    $siteOverrides = $intent.siteOverrides
+}
+
+if ($create) {
+    try {
+        Add-NetIntent -Name $intent.intentName -Compute:$intent.isComputeIntentSet -Management:$intent.isManagementIntentSet -Storage:$intent.isStorageIntentSet -Stretch:$intent.isStretchIntentSet -AdapterName $intent.netAdapterNamesAsList -SwitchPropertyOverrides $switchOverrides -QoSPolicyOverrides $DCBOverride1 -AdapterPropertyOverrides $AdapterPropertyOverride -SiteOverrides $siteOverrides -SkipNetworkInterfaceValidation -ErrorVariable +err
+    } catch {
+        # do nothing, write error later
+    }
+}
+else {
+    # this if block is never executed - will be needed when customers want to update adapters on existing intents
+    if ([bool]($intent.PSobject.Properties.name -match "netAdapterNamesAsList")) {
+        Update-NetIntentAdapter -Name $intent.intentName -AdapterName $intent.netAdapterNamesAsList -ErrorAction SilentlyContinue -ErrorVariable +err
+    }
+    Set-NetIntent -Name $intent.intentName -SwitchOverrides $switchOverrides -QoSPolicyOverrides $DCBOverride1 -AdapterPropertyOverrides $AdapterPropertyOverride -SiteOverrides $siteOverrides -ErrorAction SilentlyContinue -ErrorVariable +err
+}
+
+for ($i = 0; $i -lt $err.Count; ++$i) {
+    Write-Error $err[$i].Exception
+}
+
+}
+## [END] Update-WACNANetIntents ##
+function Update-WACNAProxyOverrides {
+<#
+
+.SYNOPSIS
+Updates the net intent global proxy override
+
+.DESCRIPTION
+Updates the net intent global proxy override
+
+.PARAMETER create
+Whether the net intent global override needs to be created
+
+.PARAMETER override
+The proxy override to set
+
+.ROLE
+Readers
+    
+#>
+param
+(
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullorEmpty()]
+    [boolean] $create,
+    [Parameter(Mandatory = $true)]
+    [object] $override
+)
+
+Set-StrictMode -Version 5.0
+Import-Module NetworkATC
+
+if ($create) {
+    try {
+        Add-NetIntent -GlobalProxyOverrides $override -ErrorVariable +err
+    } catch {
+        # do nothing, write error later
+    }
+} else {
+    if ($null -ne $override) {
+        Set-NetIntent -GlobalProxyOverrides $override -ErrorAction SilentlyContinue -ErrorVariable +err
+    } else {
+        # to do: Bug 44754849: [Network ATC] Adv proxy settings must also be set in WinHttp proxy, and be clearable
+    }
+}
+
+for ($i = 0; $i -lt $err.Count; ++$i) {
+    Write-Error $err[$i].Exception
+}
+
+}
+## [END] Update-WACNAProxyOverrides ##
+
+# SIG # Begin signature block
+# MIIoVQYJKoZIhvcNAQcCoIIoRjCCKEICAQExDzANBglghkgBZQMEAgEFADB5Bgor
+# BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCDXq92rwmA5SQrJ
+# fKRzVREQXJGY3dAWSmext8NCEChu8KCCDYUwggYDMIID66ADAgECAhMzAAAEhJji
+# EuB4ozFdAAAAAASEMA0GCSqGSIb3DQEBCwUAMH4xCzAJBgNVBAYTAlVTMRMwEQYD
+# VQQIEwpXYXNoaW5ndG9uMRAwDgYDVQQHEwdSZWRtb25kMR4wHAYDVQQKExVNaWNy
+# b3NvZnQgQ29ycG9yYXRpb24xKDAmBgNVBAMTH01pY3Jvc29mdCBDb2RlIFNpZ25p
+# bmcgUENBIDIwMTEwHhcNMjUwNjE5MTgyMTM1WhcNMjYwNjE3MTgyMTM1WjB0MQsw
+# CQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9u
+# ZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMR4wHAYDVQQDExVNaWNy
+# b3NvZnQgQ29ycG9yYXRpb24wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIB
+# AQDtekqMKDnzfsyc1T1QpHfFtr+rkir8ldzLPKmMXbRDouVXAsvBfd6E82tPj4Yz
+# aSluGDQoX3NpMKooKeVFjjNRq37yyT/h1QTLMB8dpmsZ/70UM+U/sYxvt1PWWxLj
+# MNIXqzB8PjG6i7H2YFgk4YOhfGSekvnzW13dLAtfjD0wiwREPvCNlilRz7XoFde5
+# KO01eFiWeteh48qUOqUaAkIznC4XB3sFd1LWUmupXHK05QfJSmnei9qZJBYTt8Zh
+# ArGDh7nQn+Y1jOA3oBiCUJ4n1CMaWdDhrgdMuu026oWAbfC3prqkUn8LWp28H+2S
+# LetNG5KQZZwvy3Zcn7+PQGl5AgMBAAGjggGCMIIBfjAfBgNVHSUEGDAWBgorBgEE
+# AYI3TAgBBggrBgEFBQcDAzAdBgNVHQ4EFgQUBN/0b6Fh6nMdE4FAxYG9kWCpbYUw
+# VAYDVR0RBE0wS6RJMEcxLTArBgNVBAsTJE1pY3Jvc29mdCBJcmVsYW5kIE9wZXJh
+# dGlvbnMgTGltaXRlZDEWMBQGA1UEBRMNMjMwMDEyKzUwNTM2MjAfBgNVHSMEGDAW
+# gBRIbmTlUAXTgqoXNzcitW2oynUClTBUBgNVHR8ETTBLMEmgR6BFhkNodHRwOi8v
+# d3d3Lm1pY3Jvc29mdC5jb20vcGtpb3BzL2NybC9NaWNDb2RTaWdQQ0EyMDExXzIw
+# MTEtMDctMDguY3JsMGEGCCsGAQUFBwEBBFUwUzBRBggrBgEFBQcwAoZFaHR0cDov
+# L3d3dy5taWNyb3NvZnQuY29tL3BraW9wcy9jZXJ0cy9NaWNDb2RTaWdQQ0EyMDEx
+# XzIwMTEtMDctMDguY3J0MAwGA1UdEwEB/wQCMAAwDQYJKoZIhvcNAQELBQADggIB
+# AGLQps1XU4RTcoDIDLP6QG3NnRE3p/WSMp61Cs8Z+JUv3xJWGtBzYmCINmHVFv6i
+# 8pYF/e79FNK6P1oKjduxqHSicBdg8Mj0k8kDFA/0eU26bPBRQUIaiWrhsDOrXWdL
+# m7Zmu516oQoUWcINs4jBfjDEVV4bmgQYfe+4/MUJwQJ9h6mfE+kcCP4HlP4ChIQB
+# UHoSymakcTBvZw+Qst7sbdt5KnQKkSEN01CzPG1awClCI6zLKf/vKIwnqHw/+Wvc
+# Ar7gwKlWNmLwTNi807r9rWsXQep1Q8YMkIuGmZ0a1qCd3GuOkSRznz2/0ojeZVYh
+# ZyohCQi1Bs+xfRkv/fy0HfV3mNyO22dFUvHzBZgqE5FbGjmUnrSr1x8lCrK+s4A+
+# bOGp2IejOphWoZEPGOco/HEznZ5Lk6w6W+E2Jy3PHoFE0Y8TtkSE4/80Y2lBJhLj
+# 27d8ueJ8IdQhSpL/WzTjjnuYH7Dx5o9pWdIGSaFNYuSqOYxrVW7N4AEQVRDZeqDc
+# fqPG3O6r5SNsxXbd71DCIQURtUKss53ON+vrlV0rjiKBIdwvMNLQ9zK0jy77owDy
+# XXoYkQxakN2uFIBO1UNAvCYXjs4rw3SRmBX9qiZ5ENxcn/pLMkiyb68QdwHUXz+1
+# fI6ea3/jjpNPz6Dlc/RMcXIWeMMkhup/XEbwu73U+uz/MIIHejCCBWKgAwIBAgIK
+# YQ6Q0gAAAAAAAzANBgkqhkiG9w0BAQsFADCBiDELMAkGA1UEBhMCVVMxEzARBgNV
+# BAgTCldhc2hpbmd0b24xEDAOBgNVBAcTB1JlZG1vbmQxHjAcBgNVBAoTFU1pY3Jv
+# c29mdCBDb3Jwb3JhdGlvbjEyMDAGA1UEAxMpTWljcm9zb2Z0IFJvb3QgQ2VydGlm
+# aWNhdGUgQXV0aG9yaXR5IDIwMTEwHhcNMTEwNzA4MjA1OTA5WhcNMjYwNzA4MjEw
+# OTA5WjB+MQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UE
+# BxMHUmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMSgwJgYD
+# VQQDEx9NaWNyb3NvZnQgQ29kZSBTaWduaW5nIFBDQSAyMDExMIICIjANBgkqhkiG
+# 9w0BAQEFAAOCAg8AMIICCgKCAgEAq/D6chAcLq3YbqqCEE00uvK2WCGfQhsqa+la
+# UKq4BjgaBEm6f8MMHt03a8YS2AvwOMKZBrDIOdUBFDFC04kNeWSHfpRgJGyvnkmc
+# 6Whe0t+bU7IKLMOv2akrrnoJr9eWWcpgGgXpZnboMlImEi/nqwhQz7NEt13YxC4D
+# dato88tt8zpcoRb0RrrgOGSsbmQ1eKagYw8t00CT+OPeBw3VXHmlSSnnDb6gE3e+
+# lD3v++MrWhAfTVYoonpy4BI6t0le2O3tQ5GD2Xuye4Yb2T6xjF3oiU+EGvKhL1nk
+# kDstrjNYxbc+/jLTswM9sbKvkjh+0p2ALPVOVpEhNSXDOW5kf1O6nA+tGSOEy/S6
+# A4aN91/w0FK/jJSHvMAhdCVfGCi2zCcoOCWYOUo2z3yxkq4cI6epZuxhH2rhKEmd
+# X4jiJV3TIUs+UsS1Vz8kA/DRelsv1SPjcF0PUUZ3s/gA4bysAoJf28AVs70b1FVL
+# 5zmhD+kjSbwYuER8ReTBw3J64HLnJN+/RpnF78IcV9uDjexNSTCnq47f7Fufr/zd
+# sGbiwZeBe+3W7UvnSSmnEyimp31ngOaKYnhfsi+E11ecXL93KCjx7W3DKI8sj0A3
+# T8HhhUSJxAlMxdSlQy90lfdu+HggWCwTXWCVmj5PM4TasIgX3p5O9JawvEagbJjS
+# 4NaIjAsCAwEAAaOCAe0wggHpMBAGCSsGAQQBgjcVAQQDAgEAMB0GA1UdDgQWBBRI
+# bmTlUAXTgqoXNzcitW2oynUClTAZBgkrBgEEAYI3FAIEDB4KAFMAdQBiAEMAQTAL
+# BgNVHQ8EBAMCAYYwDwYDVR0TAQH/BAUwAwEB/zAfBgNVHSMEGDAWgBRyLToCMZBD
+# uRQFTuHqp8cx0SOJNDBaBgNVHR8EUzBRME+gTaBLhklodHRwOi8vY3JsLm1pY3Jv
+# c29mdC5jb20vcGtpL2NybC9wcm9kdWN0cy9NaWNSb29DZXJBdXQyMDExXzIwMTFf
+# MDNfMjIuY3JsMF4GCCsGAQUFBwEBBFIwUDBOBggrBgEFBQcwAoZCaHR0cDovL3d3
+# dy5taWNyb3NvZnQuY29tL3BraS9jZXJ0cy9NaWNSb29DZXJBdXQyMDExXzIwMTFf
+# MDNfMjIuY3J0MIGfBgNVHSAEgZcwgZQwgZEGCSsGAQQBgjcuAzCBgzA/BggrBgEF
+# BQcCARYzaHR0cDovL3d3dy5taWNyb3NvZnQuY29tL3BraW9wcy9kb2NzL3ByaW1h
+# cnljcHMuaHRtMEAGCCsGAQUFBwICMDQeMiAdAEwAZQBnAGEAbABfAHAAbwBsAGkA
+# YwB5AF8AcwB0AGEAdABlAG0AZQBuAHQALiAdMA0GCSqGSIb3DQEBCwUAA4ICAQBn
+# 8oalmOBUeRou09h0ZyKbC5YR4WOSmUKWfdJ5DJDBZV8uLD74w3LRbYP+vj/oCso7
+# v0epo/Np22O/IjWll11lhJB9i0ZQVdgMknzSGksc8zxCi1LQsP1r4z4HLimb5j0b
+# pdS1HXeUOeLpZMlEPXh6I/MTfaaQdION9MsmAkYqwooQu6SpBQyb7Wj6aC6VoCo/
+# KmtYSWMfCWluWpiW5IP0wI/zRive/DvQvTXvbiWu5a8n7dDd8w6vmSiXmE0OPQvy
+# CInWH8MyGOLwxS3OW560STkKxgrCxq2u5bLZ2xWIUUVYODJxJxp/sfQn+N4sOiBp
+# mLJZiWhub6e3dMNABQamASooPoI/E01mC8CzTfXhj38cbxV9Rad25UAqZaPDXVJi
+# hsMdYzaXht/a8/jyFqGaJ+HNpZfQ7l1jQeNbB5yHPgZ3BtEGsXUfFL5hYbXw3MYb
+# BL7fQccOKO7eZS/sl/ahXJbYANahRr1Z85elCUtIEJmAH9AAKcWxm6U/RXceNcbS
+# oqKfenoi+kiVH6v7RyOA9Z74v2u3S5fi63V4GuzqN5l5GEv/1rMjaHXmr/r8i+sL
+# gOppO6/8MO0ETI7f33VtY5E90Z1WTk+/gFcioXgRMiF670EKsT/7qMykXcGhiJtX
+# cVZOSEXAQsmbdlsKgEhr/Xmfwb1tbWrJUnMTDXpQzTGCGiYwghoiAgEBMIGVMH4x
+# CzAJBgNVBAYTAlVTMRMwEQYDVQQIEwpXYXNoaW5ndG9uMRAwDgYDVQQHEwdSZWRt
+# b25kMR4wHAYDVQQKExVNaWNyb3NvZnQgQ29ycG9yYXRpb24xKDAmBgNVBAMTH01p
+# Y3Jvc29mdCBDb2RlIFNpZ25pbmcgUENBIDIwMTECEzMAAASEmOIS4HijMV0AAAAA
+# BIQwDQYJYIZIAWUDBAIBBQCgga4wGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQw
+# HAYKKwYBBAGCNwIBCzEOMAwGCisGAQQBgjcCARUwLwYJKoZIhvcNAQkEMSIEIFWD
+# jbpjQI/aMXeYduwGN1WY4ufYKaMoX9zUzUFiMefrMEIGCisGAQQBgjcCAQwxNDAy
+# oBSAEgBNAGkAYwByAG8AcwBvAGYAdKEagBhodHRwOi8vd3d3Lm1pY3Jvc29mdC5j
+# b20wDQYJKoZIhvcNAQEBBQAEggEAxkVyMMtClJe902UsdCUol6EAvOBsDBw6izUX
+# 9jMr9seCTO0eC65vSorJBYTbAGTfw+8ZBIdUkvOzTg7KHdgp2WYXJoa9cgzCk8Co
+# g6dfAkE/Wyp9osGAlGuN8oooAe15Bn7CHc8hGk42lQeeyiSNUMEaMCfRtRY0pJDd
+# 9ODslCUkshrC7ExqxmukxbGe36bVH1ygHZMS4mNCsoHqfqSHo2zryHi3bHIWRUY8
+# pw7KQyTGycT7tDSo8iKngCMp/SwNE0IeRZssgr/tEHnDsfiJh/lZqxLtZfJiD1bR
+# LfMj8GbgqL4xW1d8kmnxi+dADZ5k4LP/1D3AVN+Sv342I/q+jKGCF7AwghesBgor
+# BgEEAYI3AwMBMYIXnDCCF5gGCSqGSIb3DQEHAqCCF4kwgheFAgEDMQ8wDQYJYIZI
+# AWUDBAIBBQAwggFaBgsqhkiG9w0BCRABBKCCAUkEggFFMIIBQQIBAQYKKwYBBAGE
+# WQoDATAxMA0GCWCGSAFlAwQCAQUABCCmxu/qmHGqoaoLSkVQXClY39mRbk4sLidj
+# 26eWH+GpMQIGaQJVHpGRGBMyMDI1MTExMDE3MTc0OS42ODNaMASAAgH0oIHZpIHW
+# MIHTMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMH
+# UmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMS0wKwYDVQQL
+# EyRNaWNyb3NvZnQgSXJlbGFuZCBPcGVyYXRpb25zIExpbWl0ZWQxJzAlBgNVBAsT
+# Hm5TaGllbGQgVFNTIEVTTjo0MDFBLTA1RTAtRDk0NzElMCMGA1UEAxMcTWljcm9z
+# b2Z0IFRpbWUtU3RhbXAgU2VydmljZaCCEf4wggcoMIIFEKADAgECAhMzAAACGV6y
+# 2FR19LGNAAEAAAIZMA0GCSqGSIb3DQEBCwUAMHwxCzAJBgNVBAYTAlVTMRMwEQYD
+# VQQIEwpXYXNoaW5ndG9uMRAwDgYDVQQHEwdSZWRtb25kMR4wHAYDVQQKExVNaWNy
+# b3NvZnQgQ29ycG9yYXRpb24xJjAkBgNVBAMTHU1pY3Jvc29mdCBUaW1lLVN0YW1w
+# IFBDQSAyMDEwMB4XDTI1MDgxNDE4NDgyNloXDTI2MTExMzE4NDgyNlowgdMxCzAJ
+# BgNVBAYTAlVTMRMwEQYDVQQIEwpXYXNoaW5ndG9uMRAwDgYDVQQHEwdSZWRtb25k
+# MR4wHAYDVQQKExVNaWNyb3NvZnQgQ29ycG9yYXRpb24xLTArBgNVBAsTJE1pY3Jv
+# c29mdCBJcmVsYW5kIE9wZXJhdGlvbnMgTGltaXRlZDEnMCUGA1UECxMeblNoaWVs
+# ZCBUU1MgRVNOOjQwMUEtMDVFMC1EOTQ3MSUwIwYDVQQDExxNaWNyb3NvZnQgVGlt
+# ZS1TdGFtcCBTZXJ2aWNlMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA
+# pqFIyUkzIyxpL3Q03WmLuy4G9YIUScznhKr+cHOT+/u7ParxI96gxxb1WrWuAxB8
+# qjGLfsbImx8V3ouK1nUcf+R/nsnXas5/iTgV/Tl3QTRGT0DeuXBNbpHqc+wC1NiT
+# yA76gLnirvSBEoBzlrpNQFEnuwdbPLCLpTS3KWSCu5J02b+RFWR/kcFzVxnhoE3g
+# IaeURtrGKGBZGKLBXvqggkDENtKkvtvRT32xLvAvL/RpReu5z18ZojCs72ZSoa74
+# Dy8YbaWsDm3OZOpJRZxZsPKCHZ6xNqgFKf0xNHj0t9v0Q3W+2z5gAVaasJJCvR52
+# Sl0XJ2AOf3l0LSetXgUA5gD5IQ1RvEslTmNnSouTrGID3D1njY7mBu0puiIdPK2j
+# K/1Weef2+YR4cQpWQkeBZmXidh9AuWdlwxKQL15LJ6K2dw8y/t/PBhmLyt6QAf0C
+# epWRdgZnMytVAUuWHwlZRV9JLY7aX8D55eL9+cOLpX3bGNOmN24UpIW8qtZaqXae
+# sFvIOW23JNLhaaQVvObr1eu7GE/5Mn43e+/DbtdYl/bLP2IQ1xYEJdSbcUkDFfW3
+# KlZEh+nBKDtaRnNRkbgIgxIbKdT38OKQwZ/aA4uSsiAg6nEPiWBHGuytIo5wU75M
+# 5VdjhEqqTHfXYu8BJi6GTzvWT+9ekfMXezqCkksxaG8CAwEAAaOCAUkwggFFMB0G
+# A1UdDgQWBBSAaOo5HWatNzqZn1IF1fcD6nr3ITAfBgNVHSMEGDAWgBSfpxVdAF5i
+# XYP05dJlpxtTNRnpcjBfBgNVHR8EWDBWMFSgUqBQhk5odHRwOi8vd3d3Lm1pY3Jv
+# c29mdC5jb20vcGtpb3BzL2NybC9NaWNyb3NvZnQlMjBUaW1lLVN0YW1wJTIwUENB
+# JTIwMjAxMCgxKS5jcmwwbAYIKwYBBQUHAQEEYDBeMFwGCCsGAQUFBzAChlBodHRw
+# Oi8vd3d3Lm1pY3Jvc29mdC5jb20vcGtpb3BzL2NlcnRzL01pY3Jvc29mdCUyMFRp
+# bWUtU3RhbXAlMjBQQ0ElMjAyMDEwKDEpLmNydDAMBgNVHRMBAf8EAjAAMBYGA1Ud
+# JQEB/wQMMAoGCCsGAQUFBwMIMA4GA1UdDwEB/wQEAwIHgDANBgkqhkiG9w0BAQsF
+# AAOCAgEAXxzVZLLXBFfoCCCTiY7MHXdb7civJSTfrHYJC5Ok2NN75NpzTMT9V2Tc
+# IQjfQ3AFUbh1NBAYtMUuwxC6D4ceEXG5lXAnbvkC9YjeLVDRyImXYYmft7z+Qpl9
+# t3C/8a0tiqnOz8Ue8/DYLtMTgvWMnsqLNjILDaImOfnHI36TLCjGFe8RYLXGdCUd
+# OLlfAdMGePxSTA3TAAOc+GQbmPWjrguLWbxvnl3NVjRvrBZVkxFMoVZH0f7qGwDO
+# Shjpnv5nYnQ48ufL0uBz52RbPGdX4Fv9+UGOrBprmcHzmIutFtJec2Y4kujNtTK2
+# wBGgWscEOVhFiaVdje8VLJ7MVNKE5TmsuGM3jTLr1nuR5AFGs3UKkP7g3cQD4cHK
+# 7XdLiTm7e606QJ+WqeQsADYE9dvU9wIUbI9Dl4UcIErFw+FHaWSTrkfJ4SvLmhKn
+# l5khhpJ1sF3z6e1BxepUliXHqzRLiHWihWIWESF8IHElF3POxbP4VJqHBiYvaXMV
+# 0SyRgwoD6zXddbUnX9WR6JL2BlqAjjHxINwelsp/VhxAWThzuMA58LxvE/VAzjfF
+# F4Wm7a1ZALmJVw3oL/s/uxo1Op4tcT+hfZ9uN1htC1JN4DuRqFfLttjuoAmUQobO
+# 5zUFRzvCn8Ck/hiO+bzR15sqkjlxLMyMjpkc/ef4SUUikD468vUwggdxMIIFWaAD
+# AgECAhMzAAAAFcXna54Cm0mZAAAAAAAVMA0GCSqGSIb3DQEBCwUAMIGIMQswCQYD
+# VQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9uZDEe
+# MBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMTIwMAYDVQQDEylNaWNyb3Nv
+# ZnQgUm9vdCBDZXJ0aWZpY2F0ZSBBdXRob3JpdHkgMjAxMDAeFw0yMTA5MzAxODIy
+# MjVaFw0zMDA5MzAxODMyMjVaMHwxCzAJBgNVBAYTAlVTMRMwEQYDVQQIEwpXYXNo
+# aW5ndG9uMRAwDgYDVQQHEwdSZWRtb25kMR4wHAYDVQQKExVNaWNyb3NvZnQgQ29y
+# cG9yYXRpb24xJjAkBgNVBAMTHU1pY3Jvc29mdCBUaW1lLVN0YW1wIFBDQSAyMDEw
+# MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA5OGmTOe0ciELeaLL1yR5
+# vQ7VgtP97pwHB9KpbE51yMo1V/YBf2xK4OK9uT4XYDP/XE/HZveVU3Fa4n5KWv64
+# NmeFRiMMtY0Tz3cywBAY6GB9alKDRLemjkZrBxTzxXb1hlDcwUTIcVxRMTegCjhu
+# je3XD9gmU3w5YQJ6xKr9cmmvHaus9ja+NSZk2pg7uhp7M62AW36MEBydUv626GIl
+# 3GoPz130/o5Tz9bshVZN7928jaTjkY+yOSxRnOlwaQ3KNi1wjjHINSi947SHJMPg
+# yY9+tVSP3PoFVZhtaDuaRr3tpK56KTesy+uDRedGbsoy1cCGMFxPLOJiss254o2I
+# 5JasAUq7vnGpF1tnYN74kpEeHT39IM9zfUGaRnXNxF803RKJ1v2lIH1+/NmeRd+2
+# ci/bfV+AutuqfjbsNkz2K26oElHovwUDo9Fzpk03dJQcNIIP8BDyt0cY7afomXw/
+# TNuvXsLz1dhzPUNOwTM5TI4CvEJoLhDqhFFG4tG9ahhaYQFzymeiXtcodgLiMxhy
+# 16cg8ML6EgrXY28MyTZki1ugpoMhXV8wdJGUlNi5UPkLiWHzNgY1GIRH29wb0f2y
+# 1BzFa/ZcUlFdEtsluq9QBXpsxREdcu+N+VLEhReTwDwV2xo3xwgVGD94q0W29R6H
+# XtqPnhZyacaue7e3PmriLq0CAwEAAaOCAd0wggHZMBIGCSsGAQQBgjcVAQQFAgMB
+# AAEwIwYJKwYBBAGCNxUCBBYEFCqnUv5kxJq+gpE8RjUpzxD/LwTuMB0GA1UdDgQW
+# BBSfpxVdAF5iXYP05dJlpxtTNRnpcjBcBgNVHSAEVTBTMFEGDCsGAQQBgjdMg30B
+# ATBBMD8GCCsGAQUFBwIBFjNodHRwOi8vd3d3Lm1pY3Jvc29mdC5jb20vcGtpb3Bz
+# L0RvY3MvUmVwb3NpdG9yeS5odG0wEwYDVR0lBAwwCgYIKwYBBQUHAwgwGQYJKwYB
+# BAGCNxQCBAweCgBTAHUAYgBDAEEwCwYDVR0PBAQDAgGGMA8GA1UdEwEB/wQFMAMB
+# Af8wHwYDVR0jBBgwFoAU1fZWy4/oolxiaNE9lJBb186aGMQwVgYDVR0fBE8wTTBL
+# oEmgR4ZFaHR0cDovL2NybC5taWNyb3NvZnQuY29tL3BraS9jcmwvcHJvZHVjdHMv
+# TWljUm9vQ2VyQXV0XzIwMTAtMDYtMjMuY3JsMFoGCCsGAQUFBwEBBE4wTDBKBggr
+# BgEFBQcwAoY+aHR0cDovL3d3dy5taWNyb3NvZnQuY29tL3BraS9jZXJ0cy9NaWNS
+# b29DZXJBdXRfMjAxMC0wNi0yMy5jcnQwDQYJKoZIhvcNAQELBQADggIBAJ1Vffwq
+# reEsH2cBMSRb4Z5yS/ypb+pcFLY+TkdkeLEGk5c9MTO1OdfCcTY/2mRsfNB1OW27
+# DzHkwo/7bNGhlBgi7ulmZzpTTd2YurYeeNg2LpypglYAA7AFvonoaeC6Ce5732pv
+# vinLbtg/SHUB2RjebYIM9W0jVOR4U3UkV7ndn/OOPcbzaN9l9qRWqveVtihVJ9Ak
+# vUCgvxm2EhIRXT0n4ECWOKz3+SmJw7wXsFSFQrP8DJ6LGYnn8AtqgcKBGUIZUnWK
+# NsIdw2FzLixre24/LAl4FOmRsqlb30mjdAy87JGA0j3mSj5mO0+7hvoyGtmW9I/2
+# kQH2zsZ0/fZMcm8Qq3UwxTSwethQ/gpY3UA8x1RtnWN0SCyxTkctwRQEcb9k+SS+
+# c23Kjgm9swFXSVRk2XPXfx5bRAGOWhmRaw2fpCjcZxkoJLo4S5pu+yFUa2pFEUep
+# 8beuyOiJXk+d0tBMdrVXVAmxaQFEfnyhYWxz/gq77EFmPWn9y8FBSX5+k77L+Dvk
+# txW/tM4+pTFRhLy/AsGConsXHRWJjXD+57XQKBqJC4822rpM+Zv/Cuk0+CQ1Zyvg
+# DbjmjJnW4SLq8CdCPSWU5nR0W2rRnj7tfqAxM328y+l7vzhwRNGQ8cirOoo6CGJ/
+# 2XBjU02N7oJtpQUQwXEGahC0HVUzWLOhcGbyoYIDWTCCAkECAQEwggEBoYHZpIHW
+# MIHTMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEQMA4GA1UEBxMH
+# UmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENvcnBvcmF0aW9uMS0wKwYDVQQL
+# EyRNaWNyb3NvZnQgSXJlbGFuZCBPcGVyYXRpb25zIExpbWl0ZWQxJzAlBgNVBAsT
+# Hm5TaGllbGQgVFNTIEVTTjo0MDFBLTA1RTAtRDk0NzElMCMGA1UEAxMcTWljcm9z
+# b2Z0IFRpbWUtU3RhbXAgU2VydmljZaIjCgEBMAcGBSsOAwIaAxUAMXYp/Wqqdyb0
+# enigrLfxl0InAz6ggYMwgYCkfjB8MQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2Fz
+# aGluZ3RvbjEQMA4GA1UEBxMHUmVkbW9uZDEeMBwGA1UEChMVTWljcm9zb2Z0IENv
+# cnBvcmF0aW9uMSYwJAYDVQQDEx1NaWNyb3NvZnQgVGltZS1TdGFtcCBQQ0EgMjAx
+# MDANBgkqhkiG9w0BAQsFAAIFAOy7/A4wIhgPMjAyNTExMTAwNTUyMTRaGA8yMDI1
+# MTExMTA1NTIxNFowdzA9BgorBgEEAYRZCgQBMS8wLTAKAgUA7Lv8DgIBADAKAgEA
+# AgIilAIB/zAHAgEAAgISxjAKAgUA7L1NjgIBADA2BgorBgEEAYRZCgQCMSgwJjAM
+# BgorBgEEAYRZCgMCoAowCAIBAAIDB6EgoQowCAIBAAIDAYagMA0GCSqGSIb3DQEB
+# CwUAA4IBAQACcQPiDyD5itZG9O4/d2xC7z0WnZKjkSkPHWDSHAk519wzikYhtOPd
+# xYheP1Ec2HifUxzoOwuEBC84oFrX+ux6mXv0MX/yCEfMdHvNx/gqWW+ngQ6guwf6
+# mAQR38Y5iCRPtLg76z1BQOeUoNwHkUHENH/UcAKx1KPTkvOfy2wDolcvQ5KBuLkH
+# DFBO0LcHxHymQ91aKDYGH4CIstdDXuah3dnR5DIH3aWjUhQ9QdK+hLAqbpqoCX/5
+# sLnyF7b0zQxSJjf8LTJ/GV4+P9gTNt4SU00TjbdIAkOOMdNz56YZrCmP9KsylcLu
+# sL/FMDFHe8nMggi0cIpyXIn59lBewOlCMYIEDTCCBAkCAQEwgZMwfDELMAkGA1UE
+# BhMCVVMxEzARBgNVBAgTCldhc2hpbmd0b24xEDAOBgNVBAcTB1JlZG1vbmQxHjAc
+# BgNVBAoTFU1pY3Jvc29mdCBDb3Jwb3JhdGlvbjEmMCQGA1UEAxMdTWljcm9zb2Z0
+# IFRpbWUtU3RhbXAgUENBIDIwMTACEzMAAAIZXrLYVHX0sY0AAQAAAhkwDQYJYIZI
+# AWUDBAIBBQCgggFKMBoGCSqGSIb3DQEJAzENBgsqhkiG9w0BCRABBDAvBgkqhkiG
+# 9w0BCQQxIgQgOj6jPGTFqUdfXwIXGpqVLpwgBog9zPEudQHFUGPKH58wgfoGCyqG
+# SIb3DQEJEAIvMYHqMIHnMIHkMIG9BCDckX633E1y1EF32V18zQcrsgjzI9+3Le7m
+# lvk2OebthjCBmDCBgKR+MHwxCzAJBgNVBAYTAlVTMRMwEQYDVQQIEwpXYXNoaW5n
+# dG9uMRAwDgYDVQQHEwdSZWRtb25kMR4wHAYDVQQKExVNaWNyb3NvZnQgQ29ycG9y
+# YXRpb24xJjAkBgNVBAMTHU1pY3Jvc29mdCBUaW1lLVN0YW1wIFBDQSAyMDEwAhMz
+# AAACGV6y2FR19LGNAAEAAAIZMCIEINfmUBOfTKkmch2H35do0fQRcx2J69yqX9bm
+# sSdzYtvZMA0GCSqGSIb3DQEBCwUABIICAE3LKspEnxtdB/Uq8VMYmWkzYegGKHxS
+# ftzd/+ocJ8EQLsZTizVK6ml4BRsQIcut8igSnQzPeTLNfU9rwkXdEZvGzRJY6kRA
+# kERGCSG+bLpJoLVZFKsD3haahtwtc9BV6MILs7L10ogNy5ckNDB7ukp4dZ9FPW5u
+# KUcKLD3dsYcKcsVIOSznaTOU8DZAsf9vYZYPagPl9zLExdT7Gq+r1KKrWnbhlY+Z
+# Vnn/wV5uruqAZliZkFtne9HJOr+2P0lrpGPErfSAQMEsUI2HbR52Hqbb3FIdqZS3
+# TOAPPf7qD1DSNPVVbmg6YrFENGEcF2tY232lgPFy7kOFnuER0IRw5kthlmvc5hoT
+# b9eIss4CxNtVmC1atp6w83aT4+7Zvy/+6WJt+3I2COhYG0VkDxYrjWZ6fAYA5JZB
+# Ok8NBT4NFdDrYHgbAYC/1gWGRJTxzal7gbE7oZk7tr+xpWNneSCkOP/xu8gdNv2n
+# +Ohl3X6hWi2918QHqhSDLy9ejunnFzpWuu5R7slOJxw3DSYoWGrOzZGPlldTcOYQ
+# TrlP4Tw53NRZa1h8f1SX/jwUlWSXSvc/F7SjHoNHqkzFZDkpiio1AnfOQygND9GX
+# LIT1/bBIMuJFiIL2H2X4tQUtSadPmpIUu1JyhNBP6rslWif6dlhYa97yUkTC1sk7
+# ZM3KFLhoaYgf
+# SIG # End signature block
